@@ -8,19 +8,19 @@ import (
 )
 
 type PrivateKey struct {
-	key dilithium.PrivateKey
+	Key dilithium.PrivateKey
 }
 
 func (k PrivateKey) Sign(data []byte) *Signature {
 	mode := dilithium.Mode3
-	sign := mode.Sign(k.key, data)
+	sign := mode.Sign(k.Key, data)
 	return &Signature{
-		signature: sign,
+		Signature: sign,
 	}
 }
 
 type PublicKey struct {
-	key dilithium.PublicKey
+	Key dilithium.PublicKey
 }
 
 func GeneratePrivateKey() PrivateKey {
@@ -32,18 +32,18 @@ func GeneratePrivateKey() PrivateKey {
 	}
 
 	return PrivateKey{
-		key: privKey,
+		Key: privKey,
 	}
 }
 
 func (k PrivateKey) PublicKey() PublicKey {
 	return PublicKey{
-		key: k.key.Public().(dilithium.PublicKey),
+		Key: k.Key.Public().(dilithium.PublicKey),
 	}
 }
 
 func (k PublicKey) ToSlice() []byte {
-	return k.key.Bytes()
+	return k.Key.Bytes()
 }
 
 func (k PublicKey) Address() types.Address {
@@ -52,10 +52,10 @@ func (k PublicKey) Address() types.Address {
 }
 
 type Signature struct {
-	signature []byte
+	Signature []byte
 }
 
 func (sig Signature) Verify(publicKey PublicKey, data []byte) bool {
 	mode := dilithium.Mode3
-	return mode.Verify(publicKey.key, data, sig.signature)
+	return mode.Verify(publicKey.Key, data, sig.Signature)
 }

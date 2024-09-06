@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/akhilparakka/chainx/crypto"
@@ -40,4 +41,14 @@ func randomTxWithSignature() *Transaction {
 	tx.Sign(privKey)
 
 	return tx
+}
+
+func TestTxEncodeDecode(t *testing.T) {
+	tx := randomTxWithSignature()
+	buf := &bytes.Buffer{}
+	assert.Nil(t, tx.Encode(NewGobTxEncoder(buf)))
+
+	txDecoded := new(Transaction)
+	assert.Nil(t, txDecoded.Decode(NewGobTxDecoder(buf)))
+	assert.Equal(t, tx, txDecoded)
 }
