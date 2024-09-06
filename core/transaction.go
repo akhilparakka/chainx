@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/akhilparakka/chainx/crypto"
+	"github.com/akhilparakka/chainx/types"
 )
 
 type Transaction struct {
@@ -11,6 +12,22 @@ type Transaction struct {
 
 	From      crypto.PublicKey
 	Signature *crypto.Signature
+
+	hash types.Hash
+}
+
+func Newtransaction(data []byte) *Transaction {
+	return &Transaction{
+		Data: data,
+	}
+}
+
+func (tx *Transaction) Hash(hasher Hasher[*Transaction]) types.Hash {
+	if tx.hash.IsZero() {
+		tx.hash = hasher.Hash(tx)
+	}
+
+	return hasher.Hash(tx)
 }
 
 func (tx *Transaction) Sign(privkey crypto.PrivateKey) {
