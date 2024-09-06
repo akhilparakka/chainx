@@ -4,6 +4,7 @@ go 1.23.0
 
 require (
 	github.com/cloudflare/circl v1.4.0
+	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 )
 

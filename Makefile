@@ -5,4 +5,4 @@ run: build
 	@./bin/chainx
 
 test:
-	@go test ./... -v
+	@go test ./... -v 

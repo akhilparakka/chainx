@@ -3,38 +3,65 @@ package core
 import (
 	"testing"
 
+	"github.com/akhilparakka/chainx/types"
 	"github.com/stretchr/testify/assert"
 )
 
-func newblockchainWithGenesis(t *testing.T) *Blockchain {
-	bc, err := NewBlockchain(randomblock(0))
-	assert.Nil(t, err)
+func TestAddBlock(t *testing.T) {
+	bc := newblockchainWithgenesis(t)
+	lenBlocks := 1000
+	for i := 0; i < lenBlocks; i++ {
+		block := randomBlockWithSignature(uint32(i+1), getPrevBlockhash(t, bc, uint32(i+1)))
+		assert.Nil(t, bc.AddBlock(block))
+	}
 
-	return bc
+	assert.Equal(t, bc.Height(), uint32(lenBlocks))
+	assert.Equal(t, len(bc.headers), lenBlocks+1)
+	assert.NotNil(t, bc.AddBlock(randomblock(89, types.Hash{})))
+
 }
 
 func TestNewBlockchain(t *testing.T) {
-	bc := newblockchainWithGenesis(t)
+	bc := newblockchainWithgenesis(t)
 	assert.NotNil(t, bc.validator)
 	assert.Equal(t, bc.Height(), uint32(0))
 }
 
 func TestHasBlock(t *testing.T) {
-	bc := newblockchainWithGenesis(t)
+	bc := newblockchainWithgenesis(t)
 	assert.True(t, bc.HasBlock(0))
+	assert.False(t, bc.HasBlock(1))
+	assert.False(t, bc.HasBlock(100))
 }
 
-func TestAddBlock(t *testing.T) {
-	bc := newblockchainWithGenesis(t)
-
-	lenBlock := 1000
-	for i := 0; i < lenBlock; i++ {
-		block := randomBlockWithSignature(t, uint32(i+1))
+func TestGetHeader(t *testing.T) {
+	bc := newblockchainWithgenesis(t)
+	lenBlocks := 1000
+	for i := 0; i < lenBlocks; i++ {
+		block := randomBlockWithSignature(uint32(i+1), getPrevBlockhash(t, bc, uint32(i+1)))
 		assert.Nil(t, bc.AddBlock(block))
+		header, err := bc.GetHeader(uint32(i + 1))
+		assert.Nil(t, err)
+		assert.Equal(t, header, block.Header)
 	}
+}
 
-	assert.Equal(t, bc.Height(), uint32(lenBlock))
-	assert.Equal(t, len(bc.headers), lenBlock+1)
+func TestAddBlockToHeight(t *testing.T) {
+	bc := newblockchainWithgenesis(t)
 
-	assert.NotNil(t, bc.AddBlock(randomblock(89)))
+	assert.Nil(t, bc.AddBlock(randomBlockWithSignature(1, getPrevBlockhash(t, bc, uint32(1)))))
+	assert.NotNil(t, bc.AddBlock(randomBlockWithSignature(3, types.Hash{})))
+}
+
+func newblockchainWithgenesis(t *testing.T) *Blockchain {
+	bc, err := NewBlockchain(randomblock(0, types.Hash{}))
+	assert.Nil(t, err)
+	return bc
+}
+
+func getPrevBlockhash(t *testing.T, bc *Blockchain, height uint32) types.Hash {
+	prevheader, err := bc.GetHeader(height - 1)
+	assert.Nil(t, err)
+
+	return BlockHasher{}.Hash(prevheader)
 }
