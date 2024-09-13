@@ -12,6 +12,7 @@ import (
 var DefaultBlockTime = 5 * time.Second
 
 type Serveropts struct {
+	RPCHandler RPCHandler
 	Transports []Transport
 	BlockTime  time.Duration
 	PrivateKey *crypto.PrivateKey
@@ -30,7 +31,8 @@ func NewServer(opts Serveropts) *Server {
 	if opts.BlockTime == time.Duration(0) {
 		opts.BlockTime = DefaultBlockTime
 	}
-	return &Server{
+
+	s := &Server{
 		Serveropts:  opts,
 		blockTime:   opts.BlockTime,
 		memPool:     NewTxPool(),
@@ -38,6 +40,15 @@ func NewServer(opts Serveropts) *Server {
 		rpcChan:     make(chan RPC),
 		endChan:     make(chan struct{}),
 	}
+
+	if opts.RPCHandler == nil {
+		opts.RPCHandler = NewDefaultRPCHandler(s)
+	}
+
+	s.Serveropts = opts
+
+	return s
+
 }
 
 func (s *Server) Start() {
@@ -48,7 +59,9 @@ free:
 	for {
 		select {
 		case rpc := <-s.rpcChan:
-			fmt.Printf("%+v\n", rpc)
+			if err := s.RPCHandler.HandleRPC(rpc); err != nil {
+				logrus.Error(err)
+			}
 		case <-s.endChan:
 			break free
 		case <-ticker.C:
@@ -59,11 +72,7 @@ free:
 	fmt.Println("Server Shutdown")
 }
 
-func (s *Server) handleTransaction(tx *core.Transaction) error {
-	if err := tx.Verify(); err != nil {
-		return err
-	}
-
+func (s *Server) ProcessTransaction(from NetAddr, tx *core.Transaction) error {
 	hash := tx.Hash(core.TxHasher{})
 
 	if s.memPool.Has(hash) {
@@ -73,9 +82,18 @@ func (s *Server) handleTransaction(tx *core.Transaction) error {
 		return nil
 	}
 
+	if err := tx.Verify(); err != nil {
+		return err
+	}
+
+	tx.SetFirstSeen(time.Now().UnixNano())
+
 	logrus.WithFields(logrus.Fields{
-		"hash": hash,
+		"hash":           hash,
+		"mempool length": s.memPool.Len(),
 	}).Info("adding new tx to the mempool")
+
+	// TODO(): broadcast this tx to peers
 
 	return s.memPool.Add(tx)
 }

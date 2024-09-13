@@ -1,15 +1,10 @@
 package network
 
-type netAddr string
-
-type RPC struct {
-	From    netAddr
-	Payload []byte
-}
+type NetAddr string
 
 type Transport interface {
 	Connect(Transport) error
-	SendMessage(netAddr, []byte) error
+	SendMessage(NetAddr, []byte) error
 	Consume() <-chan RPC
-	Addr() netAddr
+	Addr() NetAddr
 }

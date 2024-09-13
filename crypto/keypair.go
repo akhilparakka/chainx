@@ -7,12 +7,13 @@ import (
 	"github.com/cloudflare/circl/sign/dilithium"
 )
 
+var mode = dilithium.Mode3
+
 type PrivateKey struct {
 	Key dilithium.PrivateKey
 }
 
 func (k PrivateKey) Sign(data []byte) *Signature {
-	mode := dilithium.Mode3
 	sign := mode.Sign(k.Key, data)
 	return &Signature{
 		Signature: sign,
@@ -24,8 +25,6 @@ type PublicKey struct {
 }
 
 func GeneratePrivateKey() PrivateKey {
-	mode := dilithium.Mode3
-
 	_, privKey, err := mode.GenerateKey(nil)
 	if err != nil {
 		panic(err)
@@ -56,6 +55,5 @@ type Signature struct {
 }
 
 func (sig Signature) Verify(publicKey PublicKey, data []byte) bool {
-	mode := dilithium.Mode3
 	return mode.Verify(publicKey.Key, data, sig.Signature)
 }
