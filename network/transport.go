@@ -7,4 +7,5 @@ type Transport interface {
 	SendMessage(NetAddr, []byte) error
 	Consume() <-chan RPC
 	Addr() NetAddr
+	Broadcast([]byte) error
 }

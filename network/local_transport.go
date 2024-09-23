@@ -52,6 +52,15 @@ func (t *LocalTransport) Consume() <-chan RPC {
 	return t.consumeChan
 }
 
+func (t *LocalTransport) Broadcast(payload []byte) error {
+	for _, peer := range t.peers {
+		if err := t.SendMessage(peer.Addr(), payload); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (t *LocalTransport) Addr() NetAddr {
 	return t.addr
 }
