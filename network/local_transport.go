@@ -37,7 +37,7 @@ func (t *LocalTransport) SendMessage(to NetAddr, msg []byte) error {
 
 	peer, ok := t.peers[to]
 	if !ok {
-		return fmt.Errorf("%s: could not send message to %s", t.addr, to)
+		return fmt.Errorf("%s: could not send message to unknown peer %s", t.addr, to)
 	}
 
 	peer.consumeChan <- RPC{

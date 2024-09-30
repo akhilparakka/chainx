@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 
 func TestSignBlock(t *testing.T) {
 	privKey := crypto.GeneratePrivateKey()
-	b := randomblock(0, types.Hash{})
+	b := randomblock(t, 0, types.Hash{})
 	b.Sign(privKey)
 
 	assert.Equal(t, b.Validator, privKey.PublicKey())
@@ -29,7 +30,19 @@ func TestSignBlock(t *testing.T) {
 	assert.NotNil(t, b.Verify())
 }
 
-func randomblock(height uint32, prevblockHash types.Hash) *Block {
+func TestEncodeblock(t *testing.T) {
+	b := randomblock(t, 1, types.Hash{})
+	buf := &bytes.Buffer{}
+	assert.Nil(t, b.Encode(NewGobBlockEncoder(buf)))
+
+	bDecode := new(Block)
+	assert.Nil(t, bDecode.Decode(NewGobBlockDecoder(buf)))
+	assert.Equal(t, b, bDecode)
+}
+
+func randomblock(t *testing.T, height uint32, prevblockHash types.Hash) *Block {
+	privKey := crypto.GeneratePrivateKey()
+	tx := randomTxWithSignature()
 	header := &Header{
 		Version:       1,
 		PrevblockHash: prevblockHash,
@@ -37,15 +50,12 @@ func randomblock(height uint32, prevblockHash types.Hash) *Block {
 		Timestamp:     time.Now().UnixNano(),
 	}
 
-	return Newblock(header, []Transaction{})
-}
-
-func randomBlockWithSignature(height uint32, prevBlockHash types.Hash) *Block {
-	privkey := crypto.GeneratePrivateKey()
-	b := randomblock(height, prevBlockHash)
-	tx := randomTxWithSignature()
-	b.AddTransaction(tx)
-	b.Sign(privkey)
+	b, err := Newblock(header, []*Transaction{tx})
+	assert.Nil(t, err)
+	dataHash, err := CalculateDataHash(b.Transactions)
+	assert.Nil(t, err)
+	b.Header.DataHash = dataHash
+	b.Sign(privKey)
 
 	return b
 }

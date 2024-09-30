@@ -2,33 +2,38 @@ package network
 
 import (
 	"bytes"
-	"fmt"
+	"os"
 	"time"
 
 	"github.com/akhilparakka/chainx/core"
 	"github.com/akhilparakka/chainx/crypto"
-	"github.com/sirupsen/logrus"
+	"github.com/akhilparakka/chainx/types"
+	"github.com/go-kit/log"
 )
 
 var DefaultBlockTime = 5 * time.Second
 
 type Serveropts struct {
+	ID            string
+	Logger        log.Logger
 	RPCDecodeFunc RPCDecodeFunc
 	RPCProcessor  RPCProcessor
 	Transports    []Transport
 	BlockTime     time.Duration
 	PrivateKey    *crypto.PrivateKey
+	blockchain    *core.Blockchain
 }
 
 type Server struct {
 	Serveropts
 	memPool     *TxPool
+	chain       *core.Blockchain
 	rpcChan     chan RPC
 	endChan     chan struct{}
 	isValidator bool
 }
 
-func NewServer(opts Serveropts) *Server {
+func NewServer(opts Serveropts) (*Server, error) {
 	if opts.BlockTime == time.Duration(0) {
 		opts.BlockTime = DefaultBlockTime
 	}
@@ -37,8 +42,19 @@ func NewServer(opts Serveropts) *Server {
 		opts.RPCDecodeFunc = DefaultRPCDecodeFunc
 	}
 
+	if opts.Logger == nil {
+		opts.Logger = log.NewLogfmtLogger(os.Stderr)
+		opts.Logger = log.With(opts.Logger, "ID", opts.ID)
+	}
+
+	chain, err := core.NewBlockchain(opts.Logger, genesisBlock())
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{
 		Serveropts:  opts,
+		chain:       chain,
 		memPool:     NewTxPool(),
 		isValidator: opts.PrivateKey != nil,
 		rpcChan:     make(chan RPC),
@@ -50,13 +66,16 @@ func NewServer(opts Serveropts) *Server {
 		s.RPCProcessor = s
 	}
 
-	return s
+	if s.isValidator {
+		go s.validatorloop()
+	}
+
+	return s, nil
 
 }
 
 func (s *Server) Start() {
 	s.initTransport()
-	ticker := time.NewTicker(s.BlockTime)
 
 free:
 	for {
@@ -64,20 +83,31 @@ free:
 		case rpc := <-s.rpcChan:
 			msg, err := s.RPCDecodeFunc(rpc)
 			if err != nil {
-				logrus.Error(err)
+				s.Logger.Log("error", err)
 			}
 
 			if err := s.RPCProcessor.ProcessMessage(msg); err != nil {
-				logrus.Error(err)
+				s.Logger.Log("error", err)
+
 			}
 		case <-s.endChan:
 			break free
-		case <-ticker.C:
-			s.createnewBlock()
+
 		}
 	}
 
-	fmt.Println("Server Shutdown")
+	s.Logger.Log("msg", "Server is shutting down")
+}
+
+func (s *Server) validatorloop() {
+	ticker := time.NewTicker(s.BlockTime)
+
+	s.Logger.Log("msg", "Starting validator loop", "blocktime", s.BlockTime)
+
+	for {
+		<-ticker.C
+		s.createnewBlock()
+	}
 }
 
 func (s *Server) ProcessMessage(msg *DecodedMessage) error {
@@ -104,9 +134,6 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 	hash := tx.Hash(core.TxHasher{})
 
 	if s.memPool.Has(hash) {
-		logrus.WithFields(logrus.Fields{
-			"hash": hash,
-		}).Info("mempool already contains the transaction")
 		return nil
 	}
 
@@ -116,14 +143,21 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	tx.SetFirstSeen(time.Now().UnixNano())
 
-	logrus.WithFields(logrus.Fields{
-		"hash":           hash,
-		"mempool length": s.memPool.Len(),
-	}).Info("adding new tx to the mempool")
+	s.Logger.Log(
+		"msg", "adding new tx to mempool",
+		"hash", hash,
+		"mempoolLength", s.memPool.Len(),
+	)
 
 	go s.broadcastTx(tx)
 
 	return s.memPool.Add(tx)
+}
+
+func (s *Server) broadcastBlock(b *core.Block) error {
+	// _ := &bytes.Buffer{}
+
+	return nil
 }
 
 func (s *Server) broadcastTx(tx *core.Transaction) error {
@@ -137,11 +171,6 @@ func (s *Server) broadcastTx(tx *core.Transaction) error {
 	return s.broadcast(msg.Bytes())
 }
 
-func (s *Server) createnewBlock() error {
-	fmt.Println("Creating new block")
-	return nil
-}
-
 func (s *Server) initTransport() {
 	for _, peer := range s.Transports {
 		go func(peer Transport) {
@@ -150,4 +179,45 @@ func (s *Server) initTransport() {
 			}
 		}(peer)
 	}
+}
+
+func (s *Server) createnewBlock() error {
+	currentHeader, err := s.chain.GetHeader(s.chain.Height())
+	if err != nil {
+		return err
+	}
+
+	// For now we are going to use all transactions that are in the mempool
+	// Later on when we know the internal structure of the transaction,
+	// Will implement some kind of complexity function which determins how
+	// many transactions can be included in a block.
+	txx := s.memPool.Transactions()
+
+	block, err := core.NewBlockFromPrevHeader(currentHeader, txx)
+	if err != nil {
+		return err
+	}
+
+	block.Sign(*s.PrivateKey)
+
+	if err := s.chain.AddBlock(block); err != nil {
+		return err
+	}
+
+	s.memPool.Flush()
+
+	return nil
+}
+
+func genesisBlock() *core.Block {
+	header := &core.Header{
+		Version:   1,
+		DataHash:  types.Hash{},
+		Height:    0,
+		Timestamp: 000000,
+	}
+
+	b, _ := core.Newblock(header, nil)
+
+	return b
 }
