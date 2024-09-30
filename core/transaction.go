@@ -15,9 +15,6 @@ type Transaction struct {
 
 	//cached version of tx data hash
 	hash types.Hash
-
-	// firstSeen is the timestamp of when this tx is first seen locally
-	firstSeen int64
 }
 
 func NewTransaction(data []byte) *Transaction {
@@ -63,12 +60,4 @@ func (tx *Transaction) Decode(dec Decoder[*Transaction]) error {
 
 func (tx *Transaction) Encode(enc Encoder[*Transaction]) error {
 	return enc.Encode(tx)
-}
-
-func (tx *Transaction) SetFirstSeen(t int64) {
-	tx.firstSeen = t
-}
-
-func (tx *Transaction) FirstSeen() int64 {
-	return tx.firstSeen
 }

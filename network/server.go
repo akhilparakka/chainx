@@ -55,7 +55,7 @@ func NewServer(opts Serveropts) (*Server, error) {
 	s := &Server{
 		Serveropts:  opts,
 		chain:       chain,
-		memPool:     NewTxPool(),
+		memPool:     NewTxPool(1000),
 		isValidator: opts.PrivateKey != nil,
 		rpcChan:     make(chan RPC),
 		endChan:     make(chan struct{}),
@@ -115,6 +115,8 @@ func (s *Server) ProcessMessage(msg *DecodedMessage) error {
 	switch t := msg.Data.(type) {
 	case *core.Transaction:
 		return s.processTransaction(t)
+	case *core.Block:
+		return s.processBlock(t)
 	}
 
 	return nil
@@ -130,10 +132,19 @@ func (s *Server) broadcast(payload []byte) error {
 	return nil
 }
 
+func (s *Server) processBlock(b *core.Block) error {
+	if err := s.chain.AddBlock(b); err != nil {
+		return err
+	}
+	go s.broadcastBlock(b)
+
+	return nil
+}
+
 func (s *Server) processTransaction(tx *core.Transaction) error {
 	hash := tx.Hash(core.TxHasher{})
 
-	if s.memPool.Has(hash) {
+	if s.memPool.Contains(hash) {
 		return nil
 	}
 
@@ -141,23 +152,28 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 		return err
 	}
 
-	tx.SetFirstSeen(time.Now().UnixNano())
-
-	s.Logger.Log(
-		"msg", "adding new tx to mempool",
-		"hash", hash,
-		"mempoolLength", s.memPool.Len(),
-	)
+	// s.Logger.Log(
+	// 	"msg", "adding new tx to mempool",
+	// 	"hash", hash,
+	// 	"mempoolPending", s.memPool.PendingCount(),
+	// )
 
 	go s.broadcastTx(tx)
 
-	return s.memPool.Add(tx)
+	s.memPool.Add(tx)
+
+	return nil
 }
 
 func (s *Server) broadcastBlock(b *core.Block) error {
-	// _ := &bytes.Buffer{}
+	buf := &bytes.Buffer{}
+	if err := b.Encode(core.NewGobBlockEncoder(buf)); err != nil {
+		return err
+	}
 
-	return nil
+	msg := NewMessage(MessageTypeBlock, buf.Bytes())
+
+	return s.broadcast(msg.Bytes())
 }
 
 func (s *Server) broadcastTx(tx *core.Transaction) error {
@@ -187,11 +203,11 @@ func (s *Server) createnewBlock() error {
 		return err
 	}
 
-	// For now we are going to use all transactions that are in the mempool
+	// For now we are going to use all transactions that are in the pending pool
 	// Later on when we know the internal structure of the transaction,
 	// Will implement some kind of complexity function which determins how
 	// many transactions can be included in a block.
-	txx := s.memPool.Transactions()
+	txx := s.memPool.Pending()
 
 	block, err := core.NewBlockFromPrevHeader(currentHeader, txx)
 	if err != nil {
@@ -204,7 +220,9 @@ func (s *Server) createnewBlock() error {
 		return err
 	}
 
-	s.memPool.Flush()
+	s.memPool.ClearPending()
+
+	s.broadcastBlock(block)
 
 	return nil
 }
