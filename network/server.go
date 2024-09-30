@@ -21,7 +21,6 @@ type Serveropts struct {
 	Transports    []Transport
 	BlockTime     time.Duration
 	PrivateKey    *crypto.PrivateKey
-	blockchain    *core.Blockchain
 }
 
 type Server struct {
